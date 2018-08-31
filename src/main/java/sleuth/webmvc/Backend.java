@@ -1,17 +1,27 @@
 package sleuth.webmvc;
 
 import java.util.Date;
+import javax.jms.Queue;
+import org.apache.activemq.command.ActiveMQQueue;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.jms.annotation.EnableJms;
+import org.springframework.jms.annotation.JmsListener;
 
 @EnableAutoConfiguration
-@RestController
+@EnableJms
+@Import(JmsConfiguration.class)
 public class Backend {
 
-  @RequestMapping("/api") public String printDate() {
-    return new Date().toString();
+  @JmsListener(destination = "backend")
+  public void onMessage() {
+    System.err.println(new Date().toString());
+  }
+
+  @Bean public Queue queue() {
+    return new ActiveMQQueue("backend");
   }
 
   public static void main(String[] args) {

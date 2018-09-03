@@ -25,27 +25,37 @@ class JmsTracingConfiguration {
     return new BeanPostProcessor() {
       @Override public Object postProcessAfterInitialization(Object bean, String beanName)
           throws BeansException {
-
-        // lazy lookup JmsTracing so that the BPP doesn't end up needing to proxy anything.
-        JmsTracing jmsTracing;
-        try {
-          jmsTracing = beanFactory.getBean(JmsTracing.class);
-        } catch (BeansException e) {
-          return bean; // graceful on failure for any reason.
-        }
-
         // Wrap the caching connection factories instead of its target, because it catches callbacks
         // such as ExceptionListener. If we don't wrap, cached callbacks like this won't be traced.
         if (bean instanceof CachingConnectionFactory) {
+          JmsTracing jmsTracing = getJmsTracing();
+          if (jmsTracing == null) return bean; // graceful on failure for any reason.
           return jmsTracing.connectionFactory((CachingConnectionFactory) bean);
         }
         // We check XA first in case the ConnectionFactory also implements XAConnectionFactory
         if (bean instanceof XAConnectionFactory) {
+          JmsTracing jmsTracing = getJmsTracing();
+          if (jmsTracing == null) return bean; // graceful on failure for any reason.
           return jmsTracing.xaConnectionFactory((XAConnectionFactory) bean);
         } else if (bean instanceof ConnectionFactory) {
+          JmsTracing jmsTracing = getJmsTracing();
+          if (jmsTracing == null) return bean; // graceful on failure for any reason.
           return jmsTracing.connectionFactory((ConnectionFactory) bean);
         }
         return bean;
+      }
+
+      // cache initialization request to avoid calling getBean for every matched bean
+      JmsTracing jmsTracing;
+
+      // Lazy lookup JmsTracing so that the BPP doesn't end up needing to proxy anything.
+      JmsTracing getJmsTracing() {
+        if (jmsTracing != null) return jmsTracing;
+        try {
+          return (jmsTracing = beanFactory.getBean(JmsTracing.class));
+        } catch (BeansException e) {
+          return null;
+        }
       }
     };
   }

@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @CrossOrigin // So that javascript can be hosted elsewhere
 @EnableJms
-@Import(JmsConfiguration.class)
+@Import(JmsTracingConfiguration.class)
 public class Frontend {
 
   @Autowired JmsTemplate jmsTemplate;

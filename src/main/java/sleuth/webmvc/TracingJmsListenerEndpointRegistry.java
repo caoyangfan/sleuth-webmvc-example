@@ -4,10 +4,12 @@ import brave.jms.JmsTracing;
 import brave.propagation.CurrentTraceContext;
 import java.lang.reflect.Field;
 import javax.jms.MessageConsumer;
+import javax.jms.MessageListener;
 import org.springframework.jms.config.JmsListenerContainerFactory;
 import org.springframework.jms.config.JmsListenerEndpoint;
 import org.springframework.jms.config.JmsListenerEndpointRegistry;
 import org.springframework.jms.config.MethodJmsListenerEndpoint;
+import org.springframework.jms.config.SimpleJmsListenerEndpoint;
 import org.springframework.jms.listener.MessageListenerContainer;
 import org.springframework.jms.listener.adapter.MessagingMessageListenerAdapter;
 import org.springframework.lang.Nullable;
@@ -34,8 +36,20 @@ class TracingJmsListenerEndpointRegistry extends JmsListenerEndpointRegistry {
   ) {
     if (endpoint instanceof MethodJmsListenerEndpoint) {
       endpoint = trace((MethodJmsListenerEndpoint) endpoint);
+    } else if (endpoint instanceof SimpleJmsListenerEndpoint) {
+      endpoint = trace((SimpleJmsListenerEndpoint) endpoint);
     }
     super.registerListenerContainer(endpoint, factory, startImmediately);
+  }
+
+  /**
+   * This wraps the {@link SimpleJmsListenerEndpoint#getMessageListener()} delegate in a new span.
+   */
+  SimpleJmsListenerEndpoint trace(SimpleJmsListenerEndpoint source) {
+    MessageListener delegate = source.getMessageListener();
+    if (delegate == null || delegate instanceof TracingMessageListener) return source;
+    source.setMessageListener(new TracingMessageListener(delegate, jmsTracing, current));
+    return source;
   }
 
   /**

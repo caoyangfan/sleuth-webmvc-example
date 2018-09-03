@@ -10,9 +10,10 @@ import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jms.annotation.JmsListenerConfigurer;
+import org.springframework.jms.connection.CachingConnectionFactory;
 
 @Configuration
-class JmsConfiguration {
+class JmsTracingConfiguration {
 
   @Bean JmsTracing jmsTracing(Tracing tracing) {
     return JmsTracing.create(tracing);
@@ -24,10 +25,16 @@ class JmsConfiguration {
       @Override public Object postProcessAfterInitialization(Object bean, String beanName)
           throws BeansException {
         if (jmsTracing == null) return bean;
-        if (bean instanceof ConnectionFactory) {
-          return jmsTracing.connectionFactory((ConnectionFactory) bean);
-        } else if (bean instanceof XAConnectionFactory) {
+        // Wrap the caching connection factories instead of its target, because it catches callbacks
+        // such as ExceptionListener. If we don't wrap, cached callbacks like this won't be traced.
+        if (bean instanceof CachingConnectionFactory) {
+          return jmsTracing.connectionFactory((CachingConnectionFactory) bean);
+        }
+        // We check XA first in case the ConnectionFactory also implements XAConnectionFactory
+        if (bean instanceof XAConnectionFactory) {
           return jmsTracing.xaConnectionFactory((XAConnectionFactory) bean);
+        } else if (bean instanceof ConnectionFactory) {
+          return jmsTracing.connectionFactory((ConnectionFactory) bean);
         }
         return bean;
       }

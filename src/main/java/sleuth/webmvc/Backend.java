@@ -12,7 +12,7 @@ import org.springframework.jms.annotation.JmsListener;
 
 @EnableAutoConfiguration
 @EnableJms
-@Import(JmsConfiguration.class)
+@Import(JmsTracingConfiguration.class)
 public class Backend {
 
   @JmsListener(destination = "backend")

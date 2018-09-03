@@ -11,6 +11,9 @@ import javax.jms.JMSException;
 import javax.jms.MessageListener;
 import javax.jms.XAConnection;
 import javax.jms.XAConnectionFactory;
+import javax.resource.spi.ResourceAdapter;
+import org.apache.activemq.ra.ActiveMQActivationSpec;
+import org.apache.activemq.ra.ActiveMQResourceAdapter;
 import org.junit.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.AutoConfigurations;
@@ -22,12 +25,15 @@ import org.springframework.boot.test.context.assertj.AssertableApplicationContex
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jca.support.ResourceAdapterFactoryBean;
+import org.springframework.jca.work.SimpleTaskWorkManager;
 import org.springframework.jms.annotation.EnableJms;
 import org.springframework.jms.annotation.JmsListener;
 import org.springframework.jms.annotation.JmsListenerConfigurer;
 import org.springframework.jms.config.JmsListenerEndpointRegistrar;
 import org.springframework.jms.config.SimpleJmsListenerEndpoint;
 import org.springframework.jms.core.JmsTemplate;
+import org.springframework.jms.listener.endpoint.JmsMessageEndpointManager;
 import zipkin2.Span;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -113,6 +119,53 @@ public class JmsTracingConfigurationTest {
     @JmsListener(destination = "myQueue")
     public void onMessage() {
       assertThat(current.get()).extracting(TraceContext::parentIdAsLong).isNotEqualTo(0L);
+    }
+  }
+
+  @Test public void tracesListener_jcaMessageListener() {
+    contextRunner.withUserConfiguration(JcaJmsListenerConfiguration.class).run(ctx -> {
+      ctx.getBean(JmsTemplate.class).convertAndSend("myQueue", "foo");
+
+      Callable<Span> takeSpan = ctx.getBean("takeSpan", Callable.class);
+      List<Span> trace = Arrays.asList(takeSpan.call(), takeSpan.call(), takeSpan.call());
+
+      assertThat(trace).allSatisfy(s -> assertThat(s.traceId()).isEqualTo(trace.get(0).traceId()));
+      assertThat(trace).extracting(Span::name).containsExactly("send", "receive", "on-message");
+    });
+  }
+
+  @Configuration
+  static class JcaJmsListenerConfiguration {
+    @Autowired CurrentTraceContext current;
+
+    @Bean ResourceAdapterFactoryBean resourceAdapter() {
+      ResourceAdapterFactoryBean resourceAdapter = new ResourceAdapterFactoryBean();
+      ActiveMQResourceAdapter real = new ActiveMQResourceAdapter();
+      real.setServerUrl("vm://localhost?broker.persistent=false");
+      resourceAdapter.setResourceAdapter(real);
+      resourceAdapter.setWorkManager(new SimpleTaskWorkManager());
+      return resourceAdapter;
+    }
+
+    @Bean MessageListener simpleMessageListener(CurrentTraceContext current) {
+      return message -> {
+        // Didn't restart the trace
+        assertThat(current.get()).extracting(TraceContext::parentIdAsLong).isNotEqualTo(0L);
+      };
+    }
+
+    @Bean JmsMessageEndpointManager endpointManager(ResourceAdapter resourceAdapter, MessageListener simpleMessageListener) {
+      JmsMessageEndpointManager endpointManager = new JmsMessageEndpointManager();
+      endpointManager.setResourceAdapter(resourceAdapter);
+
+      ActiveMQActivationSpec spec = new ActiveMQActivationSpec();
+      spec.setUseJndi(false);
+      spec.setDestinationType("javax.jms.Queue");
+      spec.setDestination("myQueue");
+
+      endpointManager.setActivationSpec(spec);
+      endpointManager.setMessageListener(simpleMessageListener);
+      return endpointManager;
     }
   }
 

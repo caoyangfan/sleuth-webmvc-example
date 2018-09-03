@@ -4,6 +4,7 @@ import brave.Tracing;
 import brave.jms.JmsTracing;
 import brave.propagation.CurrentTraceContext;
 import javax.jms.ConnectionFactory;
+import javax.jms.MessageListener;
 import javax.jms.XAConnectionFactory;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.BeanFactory;
@@ -12,6 +13,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.jms.annotation.JmsListenerConfigurer;
 import org.springframework.jms.connection.CachingConnectionFactory;
+import org.springframework.jms.listener.endpoint.JmsMessageEndpointManager;
 
 @Configuration
 class JmsTracingConfiguration {
@@ -32,6 +34,20 @@ class JmsTracingConfiguration {
           if (jmsTracing == null) return bean; // graceful on failure for any reason.
           return jmsTracing.connectionFactory((CachingConnectionFactory) bean);
         }
+
+        if (bean instanceof JmsMessageEndpointManager) {
+          JmsTracing jmsTracing = getJmsTracing();
+          if (jmsTracing == null) return bean; // graceful on failure for any reason.
+
+          JmsMessageEndpointManager manager = (JmsMessageEndpointManager) bean;
+          MessageListener listener = manager.getMessageListener();
+          if (listener != null) {
+            // Adds a consumer span as we have no visibility into JCA's implementation of messaging
+            manager.setMessageListener(jmsTracing.messageListener(listener, true));
+          }
+          return bean;
+        }
+
         // We check XA first in case the ConnectionFactory also implements XAConnectionFactory
         if (bean instanceof XAConnectionFactory) {
           JmsTracing jmsTracing = getJmsTracing();

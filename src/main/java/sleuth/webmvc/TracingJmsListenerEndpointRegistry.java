@@ -47,8 +47,8 @@ class TracingJmsListenerEndpointRegistry extends JmsListenerEndpointRegistry {
    */
   SimpleJmsListenerEndpoint trace(SimpleJmsListenerEndpoint source) {
     MessageListener delegate = source.getMessageListener();
-    if (delegate == null || delegate instanceof TracingMessageListener) return source;
-    source.setMessageListener(new TracingMessageListener(delegate, jmsTracing, current));
+    if (delegate == null) return source;
+    source.setMessageListener(jmsTracing.messageListener(delegate, false));
     return source;
   }
 

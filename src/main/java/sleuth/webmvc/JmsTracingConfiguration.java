@@ -6,6 +6,7 @@ import brave.propagation.CurrentTraceContext;
 import javax.jms.ConnectionFactory;
 import javax.jms.XAConnectionFactory;
 import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -20,11 +21,19 @@ class JmsTracingConfiguration {
   }
 
   // Setup basic JMS functionality
-  @Bean BeanPostProcessor connectionFactoryDecorator(JmsTracing jmsTracing) {
+  @Bean BeanPostProcessor connectionFactoryDecorator(BeanFactory beanFactory) {
     return new BeanPostProcessor() {
       @Override public Object postProcessAfterInitialization(Object bean, String beanName)
           throws BeansException {
-        if (jmsTracing == null) return bean;
+
+        // lazy lookup JmsTracing so that the BPP doesn't end up needing to proxy anything.
+        JmsTracing jmsTracing;
+        try {
+          jmsTracing = beanFactory.getBean(JmsTracing.class);
+        } catch (BeansException e) {
+          return bean; // graceful on failure for any reason.
+        }
+
         // Wrap the caching connection factories instead of its target, because it catches callbacks
         // such as ExceptionListener. If we don't wrap, cached callbacks like this won't be traced.
         if (bean instanceof CachingConnectionFactory) {

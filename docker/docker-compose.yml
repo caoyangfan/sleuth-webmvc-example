@@ -10,6 +10,14 @@ services:
       # Port used for the Zipkin UI and HTTP Api
       - 9411:9411
 
+  activemq:
+    image: rmohr/activemq
+    container_name: activemq
+    ports:
+      # The JMX broker listens on port 61616 and the Web Console on port 8161.
+      - 61616:61616
+      - 8161:8161
+
   frontend:
     build:
       context: ../
@@ -17,7 +25,7 @@ services:
     command: Frontend
 
   backend:
-      build:
-        context: ../
-        dockerfile: docker/Dockerfile
-      command: Backend
+    build:
+      context: ../
+      dockerfile: docker/Dockerfile
+    command: Backend
